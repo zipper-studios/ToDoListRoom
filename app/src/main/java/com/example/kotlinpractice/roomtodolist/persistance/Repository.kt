@@ -6,19 +6,24 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import io.reactivex.Observable
+import io.reactivex.disposables.CompositeDisposable
+import io.reactivex.schedulers.Schedulers
 
 
 class Repository(private val db: ToDoDatabase) {
 
+    private var comp: CompositeDisposable = CompositeDisposable()
+
     fun addToDoItem(itemToDo: ItemToDo) {
-        val myRef = FirebaseDatabase.getInstance().reference.child(System.currentTimeMillis().toString())
-        myRef.setValue(itemToDo)
+        val firebaseReference = FirebaseDatabase.getInstance().reference.child(System.currentTimeMillis().toString())
+        firebaseReference.setValue(itemToDo)
     }
 
     fun getItemsFromFirebase() {
-        val myRef = FirebaseDatabase.getInstance().reference
+        val firebaseReference = FirebaseDatabase.getInstance().reference
 
-        myRef.addListenerForSingleValueEvent(object : ValueEventListener {
+        firebaseReference.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 addFirebaseResponseToLocalDB(dataSnapshot)
             }
@@ -36,14 +41,16 @@ class Repository(private val db: ToDoDatabase) {
             val itemToDo = child.getValue(ItemToDo::class.java)
             itemToDo?.let { toDoItemList.add(itemToDo) }
         }
-
-        val runnable = Runnable {
-            db.toDoDao().insertItems(toDoItemList)
-        }
-        Thread(runnable).start()
+        insertItemsInLocalDB(toDoItemList)
     }
 
     fun getItemsFromLocalDatabase(): LiveData<List<ItemToDo>> {
         return db.toDoDao().getAllToDoItems()
+    }
+
+    fun insertItemsInLocalDB(toDoItemList: ArrayList<ItemToDo>) {
+        comp.add(Observable.fromCallable { db.toDoDao().insertItems(toDoItemList) }
+            .subscribeOn(Schedulers.io())
+            .subscribe())
     }
 }
